@@ -1,3 +1,108 @@
+-- ============================================
+-- XENO FIX PATCH
+-- ============================================
+-- 1. loadstring фикс
+if not loadstring or type(loadstring) ~= "function" then
+    if getgenv and getgenv().loadstring then
+        loadstring = getgenv().loadstring
+    elseif getgenv and getgenv().load then
+        loadstring = getgenv().load
+    else
+        loadstring = function(str)
+            return (getgenv().loadstring or getgenv().load)(str)
+        end
+    end
+end
+
+-- 2. Stub для отсутствующих функций, чтобы скрипт не падал
+local function safe_stub(name)
+    if type(_G[name]) ~= "function" and type(getgenv()[name]) ~= "function" then
+        getgenv()[name] = function() return "" end
+        _G[name] = getgenv()[name]
+    end
+end
+
+for _, fn in ipairs({
+    "setclipboard",
+    "toclipboard",
+    "writefile",
+    "readfile",
+    "isfile",
+    "delfile",
+    "makefolder",
+    "isfolder",
+    "getcustomasset",
+    "identifyexecutor",
+    "getgenv",
+    "gethui",
+    "firetouchinterest",
+    "fireproximityprompt",
+    "getconnections",
+    "hookmetamethod",
+    "hookfunction",
+    "getnamecallmethod",
+    "newcclosure",
+    "checkcaller",
+    "setthreadidentity",
+    "getthreadidentity",
+    "islclosed",
+    "getscriptclosure",
+    "getupvalue",
+    "setupvalue",
+    "getupvalues",
+    "getrawmetatable",
+    "setreadonly",
+    "isreadonly",
+}) do
+    pcall(safe_stub, fn)
+end
+
+-- 3. Фикс getcustomasset (некоторые версии Xeno требуют writefile + путь)
+if type(getcustomasset) ~= "function" or not pcall(getcustomasset, "test") then
+    local oldGet = getcustomasset
+    getgenv().getcustomasset = function(path)
+        if oldGet then
+            local ok, res = pcall(oldGet, path)
+            if ok then return res end
+        end
+        return "rbxasset://" .. tostring(path) -- fallback, чтобы не крашило
+    end
+end
+
+-- 4. pcall-safe обёртка для game:HttpGet (на случай если GitHub заблокирован)
+local _oldHttpGet = game.HttpGet
+if _oldHttpGet then
+    game.HttpGet = function(self, url, ...)
+        local ok, res = pcall(_oldHttpGet, self, url, ...)
+        if ok and res then
+            return res
+        end
+        -- Ретрай через game:HttpGetAsync
+        if self.HttpGetAsync then
+            local ok2, res2 = pcall(self.HttpGetAsync, self, url, ...)
+            if ok2 and res2 then return res2 end
+        end
+        error("Xeno: HttpGet failed for " .. tostring(url))
+    end
+end
+
+-- 5. Явно объявляем loadstring локально, чтобы Eris его видел
+local loadstring = loadstring or getgenv().loadstring or getgenv().load
+
+-- 6. Настройки Xeno-специфичные (убирает краши на некоторых сборках)
+if setfpscap then
+    pcall(setfpscap, 240) -- вместо 999/100000, чтобы не лагало
+end
+
+pcall(function()
+    if getgenv().queue_on_teleport and queueonteleport then
+        queueonteleport("")
+    end
+end)
+
+-- ============================================
+-- КОНЕЦ XENO FIX PATCH
+-- ============================================
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
 
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -6409,3 +6514,4 @@ task.spawn(function()
 end)
 
 print("[Eris] Full script loaded!")
+w
